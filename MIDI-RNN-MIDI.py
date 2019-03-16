@@ -335,7 +335,7 @@ with tf.Session() as sess:
             training_mse_list.append(mse)
             print(iteration, "\tMSE:", mse)
 
-    saver.save(sess, session_filename)  # not shown in the book
+    saver.save(sess, session_filename)  
 
 ### END TRAINING
 
@@ -402,7 +402,6 @@ array_to_midi("ai_gen_midi_02.mid", ai_generated_midi)
 
 
 
-
 ##  all the same note
 new_midi_03 = np.zeros(64) + 4.
 
@@ -438,41 +437,4 @@ with tf.Session() as sess:
 array_to_midi("test_midi_npgen_04.mid", new_midi_04)
 ai_generated_midi = clean_up_array(y_pred)
 array_to_midi("ai_gen_midi_04.mid", ai_generated_midi)
-
-
-
-# did not execute anything after this:
-
-
-
-# From y_pred, flatten out the minibatches in time.  Then eliminate the tail.
-pred_output_samples = y_pred.flatten()[: -new_sample_tail_length]
-
-### EVALUATE TEST RESULTS
-# copy the input_wave from the test set to carry over the sample times!
-# but we don't want to overwrite new_wave (mostly for plotting purposes when we do the comparison later!)
-output_wave = new_wave.copy()
-# then update the wave
-output_wave.ys = pred_output_samples
-# save generated wave!  Note that saving normalizes the data
-output_wave.write(filename = model_filename.replace('.csv','-RNN-generated-pulverized-ode-to-joy-negative-harmony.wav') )
-
-# GROUND TRUTH WAVE
-# open, save (to normalize),  and re-open ground truth wave.
-ground_truth_wave = normalize_and_save_wave('ode-to-joy-negative-harmony-pulverized.wav')
-
-
-# :D
-test_error = compute_test_mse(ground_truth_wave.ys, output_wave.ys)
-test_mape = compute_test_mape(ground_truth_wave.ys, output_wave.ys)
-
-
-
-#report_mse_per_n_steps = 3
-#training_mse_list = [1, 2, 3, 23]
-save_model_hyperparams_and_results(model_filename, model_hyperparams_string, training_mse_list, report_mse_per_n_steps, test_error, test_mape)
-
-### PLOT AND SAVE COMPARISON
-# :D
-plot_input_output(new_wave, output_wave, ground_truth_wave, start_sample = 400)
 
