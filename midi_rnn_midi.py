@@ -160,11 +160,11 @@ plt.show()
 
 t_min, t_max = 0, len(a_i)
 
-# Set up subsampling input and train_target waveforms!!!
+# Set up subsampling input and train_target sequences
 def next_batch(batch_size, n_steps):
     '''
-    This function randomly selects sub-waveforms of number of contiguous samples equal to  n_steps
-    The number of sub-waveforms selected per batch is the batch_size.
+    This function randomly selects sub-sequences of number of contiguous steps equal to  n_steps
+    The number of sub-sequences selected per batch is the batch_size.
     :param batch_size:
     :param n_steps:
     :return:
@@ -182,7 +182,7 @@ def next_batch(batch_size, n_steps):
 
 
 ## let's make sure batches are working!!!
-asdf = next_batch(8,40)
+asdf = next_batch(batch_size = 8,n_steps = 40)
 plt.plot(asdf[0][0])
 plt.plot(asdf[1][0])
 plt.show()
