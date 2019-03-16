@@ -7,7 +7,10 @@ import copy
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import midi
+import os
 
+
+N_STEPS = 64
 
 # linear rhythms.
 # extending to chords or beats with multiple drums playing at the same time is easy,
@@ -94,14 +97,18 @@ def array_to_midi_old(output_filename, note_array):
 
 def train_test_array_from_3_sketches():
 
-    train_input1 = midi_to_array("midi_in_01.mid")
-    train_target1 = midi_to_array("midi_target_01.mid")
+    module_dir = os.path.dirname(os.path.realpath(__file__))
+    print(module_dir)
 
-    train_input2 = midi_to_array("midi_in_02.mid")
-    train_target2 = midi_to_array("midi_target_02.mid")
+    train_files_dir = module_dir + '/training_midis/2018_linear_rhythms/'
+    train_input1 = midi_to_array(train_files_dir + "midi_in_01.mid")
+    train_target1 = midi_to_array(train_files_dir + "midi_target_01.mid")
 
-    train_input3 = midi_to_array("midi_in_03.mid")
-    train_target3 = midi_to_array("midi_target_03.mid")
+    train_input2 = midi_to_array(train_files_dir + "midi_in_02.mid")
+    train_target2 = midi_to_array(train_files_dir + "midi_target_02.mid")
+
+    train_input3 = midi_to_array(train_files_dir + "midi_in_03.mid")
+    train_target3 = midi_to_array(train_files_dir + "midi_target_03.mid")
     
     train_input_array = np.append(train_input1, train_input2)
     train_input_array = np.append(train_input_array, train_input3)
@@ -421,8 +428,11 @@ def make_eg_midi_inputs(example_number):
 
 
 
-def predict_and_save(new_midifile, session_filename, output):
+def predict_and_save(new_midifile, session_filename, output, n_steps = N_STEPS):
+    print(session_filename)
+
     with tf.Session() as sess:
+        saver = tf.train.import_meta_graph(session_filename + '.meta')
         saver.restore(sess, session_filename)
         
         # later make a NN class and do self.n_steps
@@ -446,7 +456,4 @@ def concert_with_four_midis(session_filename):
 
         # predict, produce ai-generated midi riff i
         predict_and_save(new_midi, session_filename,  ai_output_filename)
-
-
-    
 
