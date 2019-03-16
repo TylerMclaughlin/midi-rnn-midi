@@ -92,24 +92,29 @@ def array_to_midi_old(output_filename, note_array):
 
 
 
+def train_test_array_from_3_sketches():
 
+    train_input1 = midi_to_array("midi_in_01.mid")
+    train_target1 = midi_to_array("midi_target_01.mid")
 
-train_input1 = midi_to_array("midi_in_01.mid")
-train_target1 = midi_to_array("midi_target_01.mid")
+    train_input2 = midi_to_array("midi_in_02.mid")
+    train_target2 = midi_to_array("midi_target_02.mid")
 
-train_input2 = midi_to_array("midi_in_02.mid")
-train_target2 = midi_to_array("midi_target_02.mid")
+    train_input3 = midi_to_array("midi_in_03.mid")
+    train_target3 = midi_to_array("midi_target_03.mid")
+    
+    train_input_array = np.append(train_input1, train_input2)
+    train_input_array = np.append(train_input_array, train_input3)
 
-train_input3 = midi_to_array("midi_in_03.mid")
-train_target3 = midi_to_array("midi_target_03.mid")
+    # make master train target.    
+    train_target_array = np.append(train_target1, train_target2)
+    train_target_array = np.append(train_target_array, train_target3)
 
-train_input = np.append(train_input1, train_input2)
-train_input = np.append(train_input, train_input3)
+    return train_input_array, train_target_array
 
-train_target = np.append(train_target1, train_target2)
-train_target = np.append(train_target, train_target3)
+def data_aug_sparsify(tr_input, tr_target, sparse_factor = 4):
 
-def data_augmentation(tr_input, tr_target, sparse_factor = 4):
+    # data augmentation
     # randomly delete onsets to make rhythms more sparse
     # random boolean mask for which values will be changed
     mask = np.random.randint(0, 2, size=len(tr_input)).astype(np.bool)
@@ -137,11 +142,13 @@ def data_augmentation(tr_input, tr_target, sparse_factor = 4):
 
 
 def append_aug(input, target, sparseness = 2):
-    aug_i, aug_t = data_augmentation(input, target, sparse_factor=sparseness)
+    aug_i, aug_t = data_aug_sparsify(input, target, sparse_factor=sparseness)
     new_input = np.append(input, aug_i )
     new_target = np.append(target, aug_t )
     return(new_input, new_target)
 
+
+train_input, train_target = train_test_array_from_3_sketches()
 a_i, a_t = append_aug(train_input, train_target)
 
 # Plot Rhythm!!
@@ -169,6 +176,7 @@ def next_batch(batch_size, n_steps):
     # the other is corresponding set of train_target sub-timeseries!
     # note that the -1 of reshape means "figure it out, numpy"
     ys = a_i[instance_indices].reshape(-1, n_steps, 1), a_t[instance_indices].reshape(-1, n_steps, 1)
+    # return a tuple called ys
     return(ys)
 
 
@@ -260,181 +268,185 @@ def plot_input_output(input, predicted_output, true_output, start_sample = 0, n_
     plt.gcf().clear()
 
 
-# make this non-64 beat dependent!!
+# TO DO: make this non-64 beat dependent!!
+# TO DO: make this more than 1d. 
+
 def clean_up_array(nn_output_array):
-    # make ints
+    # make array of floats an array of ints
     int_array = nn_output_array.T.astype(int)
+    # make 1d.
     array_1d = np.squeeze(int_array.reshape(1, 64))
     return(array_1d)
 
 
-reset_graph()
-
-
-### NEURAL NETWORK HYPERPARAMETERS
-n_steps = 64 #400  # time steps!
-n_inputs = 1  # number of channels.
-n_neurons = 200 #400 #200 #100
-n_outputs = 1
-
-X = tf.placeholder(tf.float32, [None, n_steps, n_inputs])
-y = tf.placeholder(tf.float32, [None, n_steps, n_outputs])
-
-# this will give 100 outputs per cell
-#cell = tf.contrib.rnn.BasicRNNCell(num_units=n_neurons, activation=tf.nn.relu)
-# this will give one output per cell
-cell = tf.contrib.rnn.OutputProjectionWrapper(
-    tf.contrib.rnn.BasicRNNCell(num_units=n_neurons, activation=tf.nn.relu),
-    output_size=n_outputs)
-
-n_layers = 1
-
-#layers = [tf.contrib.rnn.BasicRNNCell(num_units=n_neurons)
-#          for layer in range(n_layers)]
-#
-#multi_layer_cell = tf.contrib.rnn.MultiRNNCell(layers)
-#outputs, states = tf.nn.dynamic_rnn(multi_layer_cell, X, dtype=tf.float32)
-
-
-# REMEMBER TO CHANGE THIS BACK IF IT DOESNT WORK!
-outputs, states = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
-
-
-### TRAINING HYPERPARAMETERS
-learning_rate = 0.001
-
-report_mse_per_n_steps = 100
-
-loss = tf.reduce_mean(tf.square(outputs - y)) # MSE
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-training_op = optimizer.minimize(loss)
-
-init = tf.global_variables_initializer()
-
-saver = tf.train.Saver()
-#n_iterations = 1500
-#n_iterations = 300
-n_iterations = 600
-
-batch_size = 100
-
-model_hyperparams_string, model_filename = hyperparams_string(n_steps, n_neurons, n_layers, learning_rate, optimizer, n_iterations, batch_size)
-
-# save the session with filename prefix.  append 'RNN-model'.
-session_filename = './' + model_filename.replace('.csv','-RNN_model')
-
-### BEGIN TRAINING!!!
-training_mse_list = []
-with tf.Session() as sess:
-    init.run()
-    for iteration in range(n_iterations):
-        X_batch, y_batch = next_batch(batch_size, n_steps)
-        sess.run(training_op, feed_dict={X: X_batch, y: y_batch})
-        if iteration % report_mse_per_n_steps == 0:
-            mse = loss.eval(feed_dict={X: X_batch, y: y_batch})
-            training_mse_list.append(mse)
-            print(iteration, "\tMSE:", mse)
-
-    saver.save(sess, session_filename)  
-
-### END TRAINING
-
+def train_network():    
+    reset_graph()
+    
+    
+    ### NEURAL NETWORK HYPERPARAMETERS
+    n_steps = 64 #400  # time steps!   # number of recurrent neurons
+    n_inputs = 1  # number of channels.
+    n_neurons = 200 #400 #200 #100 # neurons per node
+    n_outputs = 1
+    
+    X = tf.placeholder(tf.float32, [None, n_steps, n_inputs])
+    y = tf.placeholder(tf.float32, [None, n_steps, n_outputs])
+    
+    # this will give 100 outputs per cell
+    #cell = tf.contrib.rnn.BasicRNNCell(num_units=n_neurons, activation=tf.nn.relu)
+    # this will give one output per cell
+    cell = tf.contrib.rnn.OutputProjectionWrapper(
+        tf.contrib.rnn.BasicRNNCell(num_units=n_neurons, activation=tf.nn.relu),
+        output_size=n_outputs)
+    
+    n_layers = 1
+    
+    #layers = [tf.contrib.rnn.BasicRNNCell(num_units=n_neurons)
+    #          for layer in range(n_layers)]
+    #
+    #multi_layer_cell = tf.contrib.rnn.MultiRNNCell(layers)
+    #outputs, states = tf.nn.dynamic_rnn(multi_layer_cell, X, dtype=tf.float32)
+    
+    
+    # REMEMBER TO CHANGE THIS BACK IF IT DOESNT WORK!
+    outputs, states = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
+    
+    
+    ### TRAINING HYPERPARAMETERS
+    learning_rate = 0.001
+    
+    report_mse_per_n_steps = 100
+    
+    loss = tf.reduce_mean(tf.square(outputs - y)) # MSE
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    training_op = optimizer.minimize(loss)
+    
+    init = tf.global_variables_initializer()
+    
+    saver = tf.train.Saver()
+    #n_iterations = 1500
+    #n_iterations = 300
+    n_iterations = 600
+    
+    batch_size = 100
+    
+    model_hyperparams_string, model_filename = hyperparams_string(n_steps, n_neurons, n_layers, learning_rate, optimizer, n_iterations, batch_size)
+    
+    # save the session with filename prefix.  append 'RNN-model'.
+    first_session_filename = './' + model_filename.replace('.csv','-RNN_model')
+    
+    ### BEGIN TRAINING SESSION
+    training_mse_list = []
+    with tf.Session() as sess:
+        init.run()
+        for iteration in range(n_iterations):
+            X_batch, y_batch = next_batch(batch_size, n_steps)
+            sess.run(training_op, feed_dict={X: X_batch, y: y_batch})
+            if iteration % report_mse_per_n_steps == 0:
+                mse = loss.eval(feed_dict={X: X_batch, y: y_batch})
+                training_mse_list.append(mse)
+                print(iteration, "\tMSE:", mse)
+    
+        saver.save(sess, first_session_filename)  
+    
+    ### END TRAINING
+    
+    
 ### BEGIN TESTING!
 
-#new_midi = midi_to_array("midi_test_01.mid")
+def make_eg_midi_inputs(example_number):
 
-#new_midi = train_input1
+    if example_number == 0:
 
-new_midi = np.zeros(64)
-new_midi[32] = 4.
-new_midi[26] = 4.
-new_midi[18] = 4.
-new_midi[16] = 3.
-new_midi[30] = 3.
-new_midi[20] = 3.
-new_midi[12] = 3.
-new_midi[8] = 3.
+        ## FIRST EXAMPLE:  "RANDOM" NOTES
+        new_midi_00 = np.zeros(64)
+        new_midi_00[32] = 4.
+        new_midi_00[26] = 4.
+        new_midi_00[18] = 4.
+        new_midi_00[16] = 3.
+        new_midi_00[30] = 3.
+        new_midi_00[20] = 3.
+        new_midi_00[12] = 3.
+        new_midi_00[8] = 3.
 
+        # save
+        array_to_midi("test_midi_npgen.mid", new_midi_00)
 
-with tf.Session() as sess:
-    saver.restore(sess, session_filename)
+        return(new_midi_00)
 
-    X_new = new_midi.reshape(-1, n_steps, n_inputs)
-    y_pred = sess.run(outputs, feed_dict={X: X_new})
+    elif example_number == 1:
 
+        ## ANOTHER EXAMPLE:  SINGLE DRUM HIT
+        new_midi_01 = np.zeros(64)
+        new_midi_01[0] = 4.
+    
+        # save
+        array_to_midi("test_midi_npgen_01.mid", new_midi_01)
+    
+        return new_midi_01
 
+    elif example_number == 2:
 
-array_to_midi("test_midi_npgen.mid", new_midi)
-ai_generated_midi = clean_up_array(y_pred)
-array_to_midi("ai_gen_midi.mid", ai_generated_midi)
+        ##  all the same note
+        new_midi_02 = np.zeros(64) + 3.
+        array_to_midi("test_midi_npgen_02.mid", new_midi_02)
+    
+        return new_midi_02
+    
+    elif example_number == 3:
 
+        ##  all the same note, different note
+        new_midi_03 = np.zeros(64) + 4.
+        array_to_midi("test_midi_npgen_03.mid", new_midi_03)
 
+        return new_midi_03
 
-## ANOTHER EXAMPLE:  SINGLE DRUM HIT
+    elif example_number == 4:
 
-new_midi_01 = np.zeros(64)
-new_midi_01[0] = 4.
+        ##  alternating 4s and 3s the same note
+        new_midi_04 = np.zeros(64)
+    
+        for i in range(0, 64):
+            if (i%16 == 0) | (i%16 == 1) | (i%16 == 2) | (i%16 == 3):
+                new_midi_04[i] = 3.
+            elif (i%16 == 8) | (i%16 == 9) | (i%16 == 10) | (i%16 == 11):
+                new_midi_04[i] = 4.
+        return new_midi_04
 
-with tf.Session() as sess:
-    saver.restore(sess, session_filename)
+    else:
 
-    X_new = new_midi_01.reshape(-1, n_steps, n_inputs)
-    y_pred = sess.run(outputs, feed_dict={X: X_new})
-
-array_to_midi("test_midi_npgen_01.mid", new_midi_01)
-ai_generated_midi = clean_up_array(y_pred)
-array_to_midi("ai_gen_midi_01.mid", ai_generated_midi)
-
-
-
-##  all the same note
-new_midi_02 = np.zeros(64) + 3.
-
-with tf.Session() as sess:
-    saver.restore(sess, session_filename)
-
-    X_new = new_midi_02.reshape(-1, n_steps, n_inputs)
-    y_pred = sess.run(outputs, feed_dict={X: X_new})
-
-array_to_midi("test_midi_npgen_02.mid", new_midi_02)
-ai_generated_midi = clean_up_array(y_pred)
-array_to_midi("ai_gen_midi_02.mid", ai_generated_midi)
-
-
-
-##  all the same note
-new_midi_03 = np.zeros(64) + 4.
-
-with tf.Session() as sess:
-    saver.restore(sess, session_filename)
-
-    X_new = new_midi_03.reshape(-1, n_steps, n_inputs)
-    y_pred = sess.run(outputs, feed_dict={X: X_new})
-
-array_to_midi("test_midi_npgen_03.mid", new_midi_03)
-ai_generated_midi = clean_up_array(y_pred)
-array_to_midi("ai_gen_midi_03.mid", ai_generated_midi)
+        print('number is out of bounds!')
+        return
 
 
 
-##  alternating 4s and 3s the same note
-new_midi_04 = np.zeros(64)
 
-for i in range(0, 64):
-    if (i%16 == 0) | (i%16 == 1) | (i%16 == 2) | (i%16 == 3):
-        new_midi_04[i] = 3.
-        print(i)
-    elif (i%16 == 8) | (i%16 == 9) | (i%16 == 10) | (i%16 == 11):
-        new_midi_04[i] = 4.
+def predict_and_save(new_midifile, session_filename, output):
+    with tf.Session() as sess:
+        saver.restore(sess, session_filename)
+        
+        # later make a NN class and do self.n_steps
+        X_new = new_midifile.reshape(-1, n_steps, n_inputs)
+        y_pred = sess.run(outputs, feed_dict={X: X_new})
+
+        ai_generated_midi = clean_up_array(y_pred)
+        array_to_midi(output, ai_generated_midi)
+        
+
+def concert_with_four_midis(session_filename):
+
+    # uses 'make_eg_midi_inputs' and 'predict_and_save' to 
+    # make 4 input rhythms and pass them through the AI.
+    for i in range(0,5):
+        # make input midi file, midi riff i
+        new_midi = make_eg_midi_inputs(i)
+
+        int_string = "%02d" % (i,) 
+        ai_output_filename = "ai_gen_midi_" + int_string +  ".mid"
+
+        # predict, produce ai-generated midi riff i
+        predict_and_save(new_midi, session_filename,  ai_output_filename)
 
 
-with tf.Session() as sess:
-    saver.restore(sess, session_filename)
-
-    X_new = new_midi_04.reshape(-1, n_steps, n_inputs)
-    y_pred = sess.run(outputs, feed_dict={X: X_new})
-
-array_to_midi("test_midi_npgen_04.mid", new_midi_04)
-ai_generated_midi = clean_up_array(y_pred)
-array_to_midi("ai_gen_midi_04.mid", ai_generated_midi)
+    
 
