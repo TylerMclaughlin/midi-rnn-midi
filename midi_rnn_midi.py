@@ -10,11 +10,14 @@ import midi
 import os
 
 
+# how many time points does the AI inspect and predict?
 N_STEPS = 64
 
-# linear rhythms.
+# a single channel, means vector.  linear rhythms.
 # extending to chords or beats with multiple drums playing at the same time is easy,
 # but will be too high-dimensional for plotting
+N_INPUTS = 1 
+
 
 
 # re-drum midi notes are in an interval slightly greater than between 37 and 41.
@@ -95,7 +98,8 @@ def array_to_midi_old(output_filename, note_array):
 
 
 
-def train_test_array_from_3_sketches():
+def load_train_data_from_3_sketches():
+    # load my recorded piano rhythms
 
     module_dir = os.path.dirname(os.path.realpath(__file__))
     print(module_dir)
@@ -155,15 +159,18 @@ def append_aug(input, target, sparseness = 2):
     return(new_input, new_target)
 
 
-train_input, train_target = train_test_array_from_3_sketches()
+# make training input and training target
+train_input, train_target = load_train_data_from_3_sketches()
 a_i, a_t = append_aug(train_input, train_target)
 
-# Plot Rhythm!!
+def plot_rhythm_basic(input, target_or_output):
+    # inspect input and target/output rhythms
+    plt.plot(input)
+    plt.plot(target_or_output)
+    plt.show()
 
-plt.plot(train_input)
-plt.plot(train_target)
-plt.show()
-
+# hide plot for now
+#plot_rhythm_basic(train_input, train_target)
 
 t_min, t_max = 0, len(a_i)
 
@@ -187,13 +194,13 @@ def next_batch(batch_size, n_steps):
     return(ys)
 
 
-
-## let's make sure batches are working!!!
-asdf = next_batch(batch_size = 8,n_steps = 40)
-plt.plot(asdf[0][0])
-plt.plot(asdf[1][0])
-plt.show()
-# fantastic!
+def batch_visualize():
+    ## let's make sure batches are working!!!
+    asdf = next_batch(batch_size = 8,n_steps = 40)
+    plt.plot(asdf[0][0])
+    plt.plot(asdf[1][0])
+    plt.show()
+    # fantastic!
 
 ### TENSORFLOW SECTION
 
@@ -296,7 +303,7 @@ def train_network():
     n_neurons = 200 #400 #200 #100 # neurons per node
     n_outputs = 1
     
-    X = tf.placeholder(tf.float32, [None, n_steps, n_inputs])
+    X = tf.placeholder(tf.float32, [None, n_steps, n_inputs], name='X')
     y = tf.placeholder(tf.float32, [None, n_steps, n_outputs])
     
     # this will give 100 outputs per cell
@@ -315,8 +322,18 @@ def train_network():
     #outputs, states = tf.nn.dynamic_rnn(multi_layer_cell, X, dtype=tf.float32)
     
     
-    # REMEMBER TO CHANGE THIS BACK IF IT DOESNT WORK!
-    outputs, states = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
+    outputs, states = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)  #grrr wish I could change the name of this variable.
+
+    # I will want to reference the outputs for generating music.
+    # Currently the outputs op is named 'rnn/transpose:0' which is uninformative
+    # If you want to "rename" an op, there is no way to do that directly, because a tf.Operation (or tf.Tensor) 
+    # is immutable once it has been created.   The workaround is to create an identity variable.
+
+    outputs = tf.identity(outputs, name="outputs")
+    # print('here\'s the name of the \'outputs\' variable:')
+    # print(outputs.name)
+    # print('here\'s the shape of the \'outputs\' variable:')
+    # print(outputs.shape)
     
     
     ### TRAINING HYPERPARAMETERS
@@ -428,7 +445,7 @@ def make_eg_midi_inputs(example_number):
 
 
 
-def predict_and_save(new_midifile, session_filename, output, n_steps = N_STEPS):
+def predict_and_save(new_midifile, session_filename, output_filename, n_steps = N_STEPS, n_inputs = N_INPUTS):
     print(session_filename)
 
     with tf.Session() as sess:
@@ -437,10 +454,16 @@ def predict_and_save(new_midifile, session_filename, output, n_steps = N_STEPS):
         
         # later make a NN class and do self.n_steps
         X_new = new_midifile.reshape(-1, n_steps, n_inputs)
-        y_pred = sess.run(outputs, feed_dict={X: X_new})
+        #all_vars = [n.name for n in tf.get_default_graph().as_graph_def().node]
+        #print(all_vars)
+
+        outputs_var = tf.get_default_graph().get_tensor_by_name('outputs:0')
+        X_var = tf.get_default_graph().get_tensor_by_name('X:0')
+
+        y_pred = sess.run(outputs_var, feed_dict={X_var: X_new})
 
         ai_generated_midi = clean_up_array(y_pred)
-        array_to_midi(output, ai_generated_midi)
+        array_to_midi(output_filename, ai_generated_midi)
         
 
 def concert_with_four_midis(session_filename):
@@ -456,4 +479,3 @@ def concert_with_four_midis(session_filename):
 
         # predict, produce ai-generated midi riff i
         predict_and_save(new_midi, session_filename,  ai_output_filename)
-
